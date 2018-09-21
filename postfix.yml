@@ -1,0 +1,35 @@
+---
+- name: Configure and start postfix
+  hosts: all
+  vars:
+     mailaddress: usergroup@company.com
+  tasks:
+  - name: install postfix package
+    yum: name=postfix state=present
+  - name: enable but stop it before configure
+    service: name=postfix enabled=yes state=stopped
+  - name: configure postfix
+    shell: "postconf -e {{ item }}"
+    with_items:
+        - inet_interfaces=all
+        - myorigin=$(uname -n)
+        - mydestination=
+        - mynetworks_style=host
+        - mynetworks=127.0.0.0/8
+        - relayhost=[relayhost.company.com]
+        - 'virtual_alias_maps=hash:/etc/postfix/virtual'
+        - 'recipient_canonical_maps=regexp:/etc/postfix/canonical'
+  - name: Redirect root mail
+    lineinfile: path=/etc/postfix/virtual line="root {{ mailaddress }}"
+  - name: run postmap
+    shell: "postmap /etc/postfix/virtual"
+  - name: root in canonical
+    lineinfile: path=/etc/postfix/canonical line="/\.\*root\.\*/ {{ mailaddress }}"
+  - name: set permissions
+    shell: "postfix set-permissions"
+  - name: postsuper
+    shell: "postsuper -d ALL"
+  - name: start postfix
+    service: name=postfix state=started
+  - name: test mail send from target server
+    mail: host=localhost port=25 to={{ mailaddress }} subject=postfix body='{{ ansible_hostname }} postfix is setup. {{ ansible_product_name }}.'
